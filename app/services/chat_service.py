@@ -1,5 +1,12 @@
 from sqlalchemy.orm import Session
 
+from services.safety_service import (
+    check_crisis,
+    check_medical,
+    crisis_response,
+    medical_disclaimer,
+)
+
 from services.chat_repo import (
     get_or_create_user,
     get_or_create_active_conversation,
@@ -32,8 +39,15 @@ def handle_incoming_message(db: Session, source: str, external_id: str, text: st
     save_message(db, convo.id, "user", text)
 
     # 3) generate reply
-    reply = generate_reply(text)
+    # SAFETY FIRST
+    if check_crisis(text):
+        reply = crisis_response()
+    else:
+        reply = generate_reply(text)
 
+        # add disclaimer if medical-like
+        if check_medical(text):
+            reply = medical_disclaimer(reply)
     # 4) save assistant reply
     save_message(db, convo.id, "assistant", reply)
 
