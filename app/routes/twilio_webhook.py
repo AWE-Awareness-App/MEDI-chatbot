@@ -5,27 +5,35 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 from db.session import get_db
 from services.chat_service import handle_incoming_message
+from services.twilio_sender import send_whatsapp_menu
 
 router = APIRouter()
 
 @router.post("/webhook/twilio")
 def twilio_webhook(
-    From: str = Form(...),   # whatsapp:+1647xxxxxxx
+    From: str = Form(...),   # e.g. "whatsapp:+1647xxxxxxx"
     Body: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    text = (Body or "").strip()
+    print("numer",Form(...))
+
+    # 1) If user wants menu, send the quick-reply template (buttons)
+    if text.lower() in {"menu", "help", "start"}:
+        send_whatsapp_menu(to_number=From)
+
+        # Return empty TwiML so Twilio doesn't also send a second text reply
+        twiml = MessagingResponse()
+        return Response(content=str(twiml), media_type="application/xml")
+
+    # 2) Otherwise normal chat pipeline (stores msg + replies)
     result = handle_incoming_message(
         db=db,
         source="whatsapp",
         external_id=From,
-        text=Body,
+        text=text,
     )
 
     twiml = MessagingResponse()
     twiml.message(result["reply"])
-
-    # ✅ IMPORTANT: return XML, not JSON
-    return Response(
-        content=str(twiml),
-        media_type="application/xml"
-    )
+    return Response(content=str(twiml), media_type="application/xml")
