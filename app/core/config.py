@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "medi"
     LOG_LEVEL: str = "INFO"
 
-    DATABASE_URL: str = "postgresql+psycopg2://postgres:password@localhost:5432/medi"
+    DATABASE_URL: str = ""
 
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""

@@ -28,12 +28,14 @@ from services.chat_repo import (
     close_conversation,
 )
 
+from services.summary_service import maybe_update_summary
+
+
 # ---- Claude config (ENV ONLY) ----
 USE_LLM = os.getenv("USE_LLM", "true").lower() == "true"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
 LLM_MAX_HISTORY = int(os.getenv("LLM_MAX_HISTORY", "12"))
-
 
 def breathing_script() -> str:
     return (
@@ -225,4 +227,11 @@ def handle_incoming_message(db: Session, source: str, external_id: str, text: st
 
     save_message(db, convo.id, "assistant", reply)
 
-    return {"conversation_id": convo.id, "reply": reply}
+    # update running summary every N user messages
+    maybe_update_summary(db, convo.id)
+
+    # 5) return response payload
+    return {
+        "conversation_id": convo.id,
+        "reply": reply,
+    }
