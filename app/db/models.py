@@ -26,6 +26,8 @@ class Conversation(Base):
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="active")  # active/closed
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    summary: Mapped[str | None] = mapped_column(Text, default="", nullable=True)
+    summary_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation")
