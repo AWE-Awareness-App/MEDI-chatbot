@@ -1,11 +1,11 @@
 from __future__ import annotations
-import os
 from typing import List, Dict
 
 from sqlalchemy import select
+from core.config import settings
 from db.models import Message  # <-- change to your actual import
 
-MAX_HISTORY = int(os.getenv("LLM_MAX_HISTORY", "12"))
+MAX_HISTORY = int(settings.LLM_MAX_HISTORY or "12")
 
 def _role_ok(role: str) -> bool:
     return role in {"user", "assistant"}

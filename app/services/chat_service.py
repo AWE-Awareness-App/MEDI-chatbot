@@ -1,12 +1,10 @@
-import os
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sql_text
 
 from anthropic import Anthropic
-from dotenv import load_dotenv
-load_dotenv()
+from core.config import settings
 
-client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 models = client.models.list()
 
 for m in models.data:
@@ -32,10 +30,10 @@ from services.summary_service import maybe_update_summary
 
 
 # ---- Claude config (ENV ONLY) ----
-USE_LLM = os.getenv("USE_LLM", "true").lower() == "true"
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
-LLM_MAX_HISTORY = int(os.getenv("LLM_MAX_HISTORY", "12"))
+USE_LLM = settings.USE_LLM
+ANTHROPIC_API_KEY = settings.ANTHROPIC_API_KEY
+ANTHROPIC_MODEL = settings.ANTHROPIC_MODEL or "claude-sonnet-4-20250514"
+LLM_MAX_HISTORY = int(settings.LLM_MAX_HISTORY or "12")
 
 def breathing_script() -> str:
     return (

@@ -1,8 +1,8 @@
-import os
 from anthropic import AsyncAnthropic
+from core.config import settings
 from llm.base import LLMClient
 
-MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")
+MODEL = settings.ANTHROPIC_MODEL or "claude-3-5-sonnet-latest"
 
 SYSTEM_PROMPT = """You are MEDI, a calm meditation and mental-wellness assistant.
 - Supportive, non-medical guidance only.
@@ -14,7 +14,7 @@ Tone: calm, brief, kind.
 
 class AnthropicClient(LLMClient):
     def __init__(self):
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        api_key = settings.ANTHROPIC_API_KEY
         if not api_key:
             raise RuntimeError("ANTHROPIC_API_KEY not set")
         self.client = AsyncAnthropic(api_key=api_key)
