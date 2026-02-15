@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from db.models import User, Conversation, Message
+from app.db.models import User, Conversation, Message
 import uuid
 from sqlalchemy.orm import Session
 

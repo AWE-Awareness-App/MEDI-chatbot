@@ -1,0 +1,60 @@
+Title: Ledesma 2008 – MBSR in Cancer Patients (Meta-Analysis)
+
+Type: Meta-analysis
+Population: Cancer patients
+Intervention: Mindfulness-Based Stress Reduction
+Year: 2008
+
+Topic Tags:
+- cancer
+- anxiety
+- depression
+- stress
+- quality_of_life
+- mindfulness
+- meta_analysis
+
+----------------------------------------
+
+OVERVIEW
+
+This meta-analysis evaluated the effects of MBSR on psychological outcomes in cancer patients.
+
+----------------------------------------
+
+KEY FINDINGS
+
+✔ Moderate improvement in mental health outcomes
+✔ Reduced anxiety and depression
+✔ Reduced stress
+✔ Improved mood and sleep quality
+✔ Smaller effects on physical symptoms
+
+Mental health improvements were stronger than physiological effects.
+
+----------------------------------------
+
+INTERPRETATION
+
+Mindfulness appears particularly helpful for emotional coping during cancer treatment.
+
+----------------------------------------
+
+PROGRAM STRUCTURE
+
+- 8-week structured MBSR program
+- Group sessions
+- Meditation, body scan, mindful movement
+
+----------------------------------------
+
+MEDI-SAFE LANGUAGE
+
+• “Research shows mindfulness programs can help people facing cancer manage stress and emotional distress.”
+• “Mindfulness may improve quality of life during treatment.”
+
+----------------------------------------
+
+IMPORTANT BOUNDARY
+
+Mindfulness supports emotional wellbeing but is not a cancer treatment.

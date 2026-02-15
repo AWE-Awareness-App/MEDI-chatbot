@@ -1,5 +1,5 @@
 from twilio.rest import Client
-from core.config import settings
+from app.core.config import settings
 
 def send_whatsapp_menu(to_number: str) -> None:
     """

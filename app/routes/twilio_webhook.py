@@ -3,9 +3,9 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from twilio.twiml.messaging_response import MessagingResponse
 
-from db.session import get_db
-from services.chat_service import handle_incoming_message
-from services.twilio_sender import send_whatsapp_menu
+from app.db.session import get_db
+from app.services.chat_service import handle_incoming_message
+from app.services.twilio_sender import send_whatsapp_menu
 
 router = APIRouter()
 

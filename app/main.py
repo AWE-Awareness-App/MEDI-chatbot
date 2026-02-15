@@ -2,27 +2,27 @@
 
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-from core.config import settings
+from app.core.config import settings
 
 # DB: Base + engine + session dependency
-from db.base import Base
-from db.session import engine, get_db
+from app.db.base import Base
+from app.db.session import engine, get_db
 
 # IMPORTANT: this import registers your models with SQLAlchemy
 # (so Base.metadata.create_all can actually create tables)
-from db import models  # noqa: F401
+from app.db import models  # noqa: F401
 
-from services.chat_service import handle_incoming_message
-from services.history_repo import get_chat_history, get_latest_active_conversation_id
+from app.services.chat_service import handle_incoming_message
+from app.services.history_repo import get_chat_history, get_latest_active_conversation_id
 
-from routes.schemas import ChatRequest, ChatResponse, ChatHistoryResponse
-from routes.schemas import ChatHistoryResponse, MessageOut
-from routes.twilio_webhook import router as twilio_router
+from app.routes.schemas import ChatRequest, ChatResponse, ChatHistoryResponse
+from app.routes.schemas import ChatHistoryResponse, MessageOut
+from app.routes.twilio_webhook import router as twilio_router
 
 
 
 # Repo helpers
-from services.chat_repo import (
+from app.services.chat_repo import (
     get_or_create_user,
     get_or_create_active_conversation,
     save_message,

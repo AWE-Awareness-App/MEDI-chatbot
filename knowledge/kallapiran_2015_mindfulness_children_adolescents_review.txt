@@ -1,0 +1,21 @@
+Title: Kallapiran 2015 – Mindfulness in Children and Adolescents (Systematic Review)
+
+Type: Systematic review
+Population: Children and adolescents
+Intervention: MBSR / MBCT
+Year: 2015
+
+Topic Tags:
+- children_adolescents
+- anxiety
+- depression
+- stress
+
+KEY FINDINGS
+- Strong reduction in anxiety
+- Moderate reduction in stress
+- Improvement in depressive symptoms
+- Improved quality of life
+
+MEDI-SAFE LANGUAGE
+“Research suggests mindfulness programs can significantly reduce anxiety in young people.”

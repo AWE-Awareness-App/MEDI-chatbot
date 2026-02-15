@@ -1,0 +1,70 @@
+Title: Grossman 2004 – Mindfulness-Based Stress Reduction (Meta-Analysis)
+
+Type: Meta-analysis
+Population: Mixed medical and non-medical populations
+Intervention: MBSR (8-week structured program)
+Year: 2004
+
+Topic Tags:
+- mindfulness
+- mbsr
+- anxiety
+- depression
+- stress
+- quality_of_life
+- meta_analysis
+
+----------------------------------------
+
+OVERVIEW
+
+This meta-analysis examined the overall effectiveness of Mindfulness-Based Stress Reduction (MBSR) across clinical and non-clinical populations.
+
+The analysis included studies evaluating psychological distress, anxiety, depression, and overall wellbeing.
+
+----------------------------------------
+
+KEY FINDINGS
+
+Across studies, MBSR showed:
+
+✔ Moderate reductions in stress
+✔ Moderate reductions in anxiety
+✔ Improvements in depressive symptoms
+✔ Improvements in overall psychological wellbeing
+
+Effects were consistent across different populations, including individuals with chronic illness.
+
+----------------------------------------
+
+PROGRAM STRUCTURE
+
+Typical MBSR program:
+
+- Duration: 8 weeks
+- Weekly sessions: ~2–2.5 hours
+- Practices:
+  - Body scan
+  - Sitting meditation
+  - Mindful movement / gentle yoga
+  - Daily home practice
+
+----------------------------------------
+
+INTERPRETATION
+
+The findings suggest that structured mindfulness programs can meaningfully improve psychological wellbeing across diverse groups.
+
+----------------------------------------
+
+MEDI-SAFE LANGUAGE
+
+• “Research shows structured mindfulness programs can reduce stress and anxiety.”
+• “Regular meditation practice has been linked to improved emotional balance.”
+
+----------------------------------------
+
+IMPORTANT BOUNDARY
+
+This evidence supports stress reduction and emotional support.
+It does not replace psychiatric or medical treatment.

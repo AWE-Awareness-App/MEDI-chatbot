@@ -1,5 +1,5 @@
 from anthropic import AsyncAnthropic
-from core.config import settings
+from app.core.config import settings
 from llm.base import LLMClient
 
 MODEL = settings.ANTHROPIC_MODEL or "claude-3-5-sonnet-latest"

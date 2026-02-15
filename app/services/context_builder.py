@@ -2,8 +2,8 @@ from __future__ import annotations
 from typing import List, Dict
 
 from sqlalchemy import select
-from core.config import settings
-from db.models import Message  # <-- change to your actual import
+from app.core.config import settings
+from app.db.models import Message  # <-- change to your actual import
 
 MAX_HISTORY = int(settings.LLM_MAX_HISTORY or "12")
 

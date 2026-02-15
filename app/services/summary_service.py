@@ -2,7 +2,7 @@ from datetime import datetime
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from db.models import Conversation, Message
+from app.db.models import Conversation, Message
 
 SUMMARY_EVERY_N_USER_MESSAGES = 6
 SUMMARY_MAX_CHARS = 1200
