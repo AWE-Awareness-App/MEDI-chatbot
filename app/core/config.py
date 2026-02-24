@@ -30,4 +30,9 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str | None = None
     ANTHROPIC_MODEL: str | None = None
 
+    DEBUG_RAG: bool = True
+    RAG_TOP_K: int = 5
+    RAG_SKIP_SHORT_CHARS: int = 15
+    CONF_ENFORCE_CITATIONS: float = 0.55
+
 settings = Settings()
