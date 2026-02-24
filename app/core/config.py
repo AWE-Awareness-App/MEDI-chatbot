@@ -1,20 +1,34 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=str(BASE_DIR / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+
+    APP_NAME: str = "MEDI"
     ENV: str = "local"
-    APP_NAME: str = "medi"
     LOG_LEVEL: str = "INFO"
+    DATABASE_URL: str
+    OPENAI_EMBED_MODEL: str
+    OPENAI_API_KEY: str
 
-    DATABASE_URL: str = "postgresql+psycopg2://postgres:password@localhost:5432/medi"
+    TWILIO_ACCOUNT_SID: str | None = None
+    TWILIO_AUTH_TOKEN: str | None = None
+    TWILIO_WHATSAPP_NUMBER: str | None = None
+    MENU_TEMPLATE_SID: str | None = None
 
-    TWILIO_ACCOUNT_SID: str = ""
-    TWILIO_AUTH_TOKEN: str = ""
-    TWILIO_WHATSAPP_NUMBER: str = ""
+    LLM_PROVIDER: str = "anthropic"
+    USE_LLM: bool = True
+    LLM_MAX_HISTORY: int = 12
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
-
+    ANTHROPIC_API_KEY: str | None = None
+    ANTHROPIC_MODEL: str | None = None
 
 settings = Settings()

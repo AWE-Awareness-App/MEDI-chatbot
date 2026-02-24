@@ -1,5 +1,7 @@
 from sqlalchemy.orm import Session
-from db.models import User, Conversation, Message
+from app.db.models import User, Conversation, Message
+import uuid
+from sqlalchemy.orm import Session
 
 def get_or_create_user(db: Session, source: str, external_id: str) -> User:
     user = db.query(User).filter(User.external_id == external_id).first()
@@ -20,7 +22,12 @@ def get_or_create_active_conversation(db: Session, user_id: str) -> Conversation
     )
     if convo:
         return convo
-    convo = Conversation(user_id=user_id, status="active")
+
+    convo = Conversation(
+        id=str(uuid.uuid4()),
+        user_id=user_id,
+        status="active",
+    )
     db.add(convo)
     db.commit()
     db.refresh(convo)
@@ -32,3 +39,12 @@ def save_message(db: Session, conversation_id: str, role: str, content: str) -> 
     db.commit()
     db.refresh(msg)
     return msg
+
+def close_conversation(db: Session, conversation_id: str) -> Conversation | None:
+    convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not convo:
+        return None
+    convo.status = "closed"
+    db.commit()
+    db.refresh(convo)
+    return convo

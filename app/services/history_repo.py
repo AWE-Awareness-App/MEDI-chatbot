@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from db.models import Message, Conversation
+from app.db.models import Message, Conversation
 
 def get_chat_history(db: Session, conversation_id: str, limit: int = 50, offset: int = 0):
     """

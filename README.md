@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Meditation Chatbot - Research-Backed Guidance Platform
 
 [![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
@@ -661,3 +662,7 @@ Please report security vulnerabilities to: security@yourproject.com
 ## Quick Links
 
 [📖 Documentation](docs/) | [🐛 Report Bug](issues) | [✨ Request Feature](issues) | [💬 Discussions](discussions) | [📊 Project Board](projects)
+=======
+# MEDI-chatbot
+Meditation chatbot
+>>>>>>> d48f6ab (Initial commit)
