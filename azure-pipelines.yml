@@ -1,45 +1,82 @@
 trigger:
   branches:
     include:
-      - main
+      - '*'
 
-pool:
-  vmImage: ubuntu-latest
-
-variables:
-  imageRepository: medi-chatbot
-  containerRegistry: aweacrconnection.azurecr.io
-  dockerfilePath: Dockerfile
-  tag: main-latest
-  webAppName: medi-chatbot
+pr: none
 
 stages:
-
   - stage: Build
-    displayName: Build and push Docker image
+    displayName: 'Build and Push Image'
     jobs:
-      - job: BuildAndPush
-        displayName: Build & push to ACR
+      - job: Build
+        pool:
+          name: 'awe-us'
         steps:
+          - checkout: self
           - task: Docker@2
-            displayName: Build and push image to ACR
+            displayName: 'Build and push image'
             inputs:
               command: buildAndPush
-              repository: $(imageRepository)
-              dockerfile: $(dockerfilePath)
-              containerRegistry: aweacrconnection
-              tags: $(tag)
+              containerRegistry: 'awe-acr-connection'
+              repository: 'medi-chatbot'
+              dockerfile: $(Build.SourcesDirectory)/Dockerfile
+              buildContext: $(Build.SourcesDirectory)
+              tags: |
+                $(Build.SourceBranchName)-$(Build.BuildId)
+                $(Build.SourceBranchName)-latest
 
   - stage: Deploy
-    displayName: Deploy to Azure Web App
+    displayName: 'Deploy to Production'
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
     dependsOn: Build
     jobs:
-      - job: DeployToWebApp
-        displayName: Deploy container to medi-chatbot
-        steps:
-          - task: AzureWebAppContainer@1
-            displayName: Deploy to Azure Web App (medi-chatbot)
-            inputs:
-              azureSubscription: 'Azure subscription 1'
-              appName: $(webAppName)
-              containers: $(containerRegistry)/$(imageRepository):$(tag)
+      - deployment: Deploy
+        pool:
+          name: 'awe-us'
+        environment: 'Production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: AzureCLI@2
+                  displayName: 'Deploy to Azure App Service'
+                  inputs:
+                    azureSubscription: 'awe-azure-subscription'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      echo "Deploying MEDI chatbot..."
+                      
+                      PRODUCTION_TAG="main-latest"
+                      
+                      az webapp config container set \
+                        --name medi-chatbot \
+                        --resource-group awe-web \
+                        --docker-custom-image-name aweacrconnection.azurecr.io/medi-chatbot:$PRODUCTION_TAG \
+                        --docker-registry-server-url https://aweacrconnection.azurecr.io \
+                        --docker-registry-server-user aweacrconnection \
+                        --docker-registry-server-password $(az acr credential show --name aweacrconnection --query "passwords[0].value" -o tsv)
+                      
+                      echo "Restarting Web App..."
+                      az webapp restart --name medi-chatbot --resource-group awe-web
+                      
+                      echo "Deployment complete!"
+
+variables:
+  - group: 'chatbot-mvp'
+  - name: dockerRegistryServiceConnection
+    value: 'awe-acr-connection'
+  - name: imageRepository
+    value: 'medi-chatbot'
+  - name: containerRegistry
+    value: 'aweacrconnection.azurecr.io'
+  - name: acrName
+    value: 'aweacrconnection'
+  - name: azureSubscription
+    value: 'awe-azure-subscription'
+  - name: webAppName
+    value: 'medi-chatbot'
+  - name: resourceGroup
+    value: 'awe-web'
