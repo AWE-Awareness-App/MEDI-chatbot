@@ -1,0 +1,45 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  imageRepository: medi-chatbot
+  containerRegistry: aweacrconnection.azurecr.io
+  dockerfilePath: Dockerfile
+  tag: main-latest
+  webAppName: medi-chatbot
+
+stages:
+
+  - stage: Build
+    displayName: Build and push Docker image
+    jobs:
+      - job: BuildAndPush
+        displayName: Build & push to ACR
+        steps:
+          - task: Docker@2
+            displayName: Build and push image to ACR
+            inputs:
+              command: buildAndPush
+              repository: $(imageRepository)
+              dockerfile: $(dockerfilePath)
+              containerRegistry: aweacrconnection
+              tags: $(tag)
+
+  - stage: Deploy
+    displayName: Deploy to Azure Web App
+    dependsOn: Build
+    jobs:
+      - job: DeployToWebApp
+        displayName: Deploy container to medi-chatbot
+        steps:
+          - task: AzureWebAppContainer@1
+            displayName: Deploy to Azure Web App (medi-chatbot)
+            inputs:
+              azureSubscription: 'Azure subscription 1'
+              appName: $(webAppName)
+              containers: $(containerRegistry)/$(imageRepository):$(tag)
