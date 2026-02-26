@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
 
     APP_NAME: str = "MEDI"
+    ENV: str = "local"
     LOG_LEVEL: str = "INFO"
     DATABASE_URL: str
     OPENAI_EMBED_MODEL: str

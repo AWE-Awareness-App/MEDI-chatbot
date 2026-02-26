@@ -10,3 +10,10 @@ node_modules
 dist
 build
 *.log
+**/__pycache__
+*.egg-info
+.pytest_cache
+dist
+build
+knowledge/
+medi_backup.dump
