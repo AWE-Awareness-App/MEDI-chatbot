@@ -17,11 +17,22 @@ services:
       timeout: 5s
       retries: 20
 
+  redis:
+    image: redis:7-alpine
+    container_name: medi_redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   api:
     build: .
     container_name: medi_api
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     env_file:
       - .env.docker
@@ -30,6 +41,25 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - .:/app
+      - medi_audio_local:/app/.local_audio
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: medi_worker
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env.docker
+    command: python -m app.worker_run
+    volumes:
+      - .:/app
+      - medi_audio_local:/app/.local_audio
 
 volumes:
   medi_pgdata:
+  medi_audio_local:
