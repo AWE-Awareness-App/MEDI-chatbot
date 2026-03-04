@@ -54,6 +54,7 @@ class VoiceJob(Base):
 
     twilio_media_url = Column(Text, nullable=True)
     audio_blob_path = Column(String, nullable=True)
+    twilio_message_sid = Column(String, nullable=True)  # stores inbound MessageSid
 
     status = Column(String, nullable=False, default="queued")  # queued|processing|done|failed
     transcript = Column(Text, nullable=True)

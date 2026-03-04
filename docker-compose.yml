@@ -42,6 +42,7 @@ services:
     volumes:
       - .:/app
       - medi_audio_local:/app/.local_audio
+      - ./piper_models:/app/.local_audio/piper_models
 
   worker:
     build:
@@ -55,10 +56,26 @@ services:
         condition: service_healthy
     env_file:
       - .env.docker
-    command: python -m app.worker_run
+    command:
+      - /bin/sh
+      - -c
+      - |
+          set -e
+          if [ -z "$${PIPER_MODEL_PATH:-}" ]; then
+            echo "PIPER_MODEL_PATH is not set"
+            exit 1
+          fi
+          if [ ! -f "$${PIPER_MODEL_PATH}" ]; then
+            voice_name="$${PIPER_MODEL_PATH##*/}"
+            voice_name="$${voice_name%.onnx}"
+            echo "Downloading Piper voice: $${voice_name}"
+            python -m piper.download_voices "$${voice_name}" --download-dir /app/.local_audio/piper_models
+          fi
+          exec python -m app.worker_run
     volumes:
       - .:/app
       - medi_audio_local:/app/.local_audio
+      - ./piper_models:/app/.local_audio/piper_models
 
 volumes:
   medi_pgdata:

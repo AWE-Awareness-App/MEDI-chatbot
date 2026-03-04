@@ -7,12 +7,14 @@ def create_voice_job(
     user_id: str,
     twilio_media_url: str | None,
     audio_blob_path: str | None,
+    twilio_message_sid:str | None
 ) -> str:
     job = VoiceJob(
         source=source,
         user_id=user_id,
         twilio_media_url=twilio_media_url,
         audio_blob_path=audio_blob_path,
+        twilio_message_sid=twilio_message_sid,
         status="queued",
     )
     db.add(job)

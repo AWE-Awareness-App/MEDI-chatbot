@@ -18,6 +18,10 @@ from app.services.voice_jobs import create_voice_job, get_voice_job_public_dict
 from app.services.azure_blob import upload_audio_bytes
 from app.services.queue_service import enqueue_voice_job
 
+from pathlib import Path
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
+
 
 app = FastAPI(title=settings.APP_NAME)
 app.include_router(twilio_router)
@@ -102,3 +106,26 @@ def voice_job_status(job_id: str, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="not found")
     return job
+
+
+TTS_DIR = Path("/app/.local_audio/tts").resolve()
+
+MIME = {
+    ".mp3": "audio/mpeg",
+    ".ogg": "audio/ogg",   # ogg container + opus codec
+    ".opus": "audio/ogg",
+    ".wav": "audio/wav",
+}
+
+@app.get("/media/tts/{filename}")
+def get_tts_audio(filename: str):
+    # prevent path traversal
+    path = (TTS_DIR / filename).resolve()
+    if not str(path).startswith(str(TTS_DIR)):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Not found")
+
+    media_type = MIME.get(path.suffix.lower(), "application/octet-stream")
+    return FileResponse(str(path), media_type=media_type, filename=path.name)
