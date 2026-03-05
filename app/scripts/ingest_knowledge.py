@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import sys
 from pathlib import Path
-from typing import Optional
 
 # Allow running this file directly: `python app/scripts/ingest_knowledge.py`
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -11,30 +11,19 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from openai import OpenAI
+from pypdf import PdfReader
 from sqlalchemy import create_engine, text
+from app.core.config import settings
 from psycopg2.extras import Json
 
-from app.core.config import settings
 
 
 DB_URL = settings.DATABASE_URL
-OPENAI_API_KEY = settings.OPENAI_API_KEY
-EMBED_MODEL = settings.OPENAI_EMBED_MODEL
+OPENAI_API_KEY =  settings.OPENAI_API_KEY
+EMBED_MODEL =  settings.OPENAI_EMBED_MODEL
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 engine = create_engine(DB_URL, pool_pre_ping=True)
-
-
-# ----------------------------
-# Day 10: Evidence ranking
-# ----------------------------
-EVIDENCE_LEVEL_PRIORITY = {
-    "meta_analysis": 4,
-    "rct": 3,
-    "review": 2,
-    "theory": 1,
-    "unknown": 0,
-}
 
 
 def chunk_text(s: str, chunk_size: int = 1200, overlap: int = 150) -> list[str]:
@@ -57,80 +46,61 @@ def sha(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
-# ----------------------------
-# Day 10: Topic + evidence inference
-# ----------------------------
-def infer_topic_from_filename(filename: str) -> str:
-    f = filename.lower()
-
-    # domains
-    if "sleep" in f:
-        return "sleep"
-    if "breath" in f or "breathing" in f or "rsa" in f or "hrv" in f:
-        return "breathing"
-    if "polyvagal" in f or "vagal" in f or "neuroception" in f:
-        return "polyvagal"
-
-    # populations/conditions
-    if "cancer" in f or "lung" in f or "oncolog" in f:
-        return "cancer"
-    if "infertil" in f or "ivf" in f or "fertilit" in f:
-        return "infertility"
-    if "child" in f or "adolesc" in f or "youth" in f or "teen" in f or "school" in f:
-        return "youth"
-
-    # symptoms
-    if "anxiety" in f or "panic" in f:
-        return "anxiety"
-    if "stress" in f or "burnout" in f:
-        return "stress"
-    if "depress" in f or "mood" in f:
-        return "depression"
-
-    return "general"
+def safe_print(msg: str) -> None:
+    """Print with non-ASCII characters replaced, to avoid Windows console errors."""
+    print(msg.encode("ascii", errors="replace").decode("ascii"))
 
 
-def infer_evidence_level(filename: str, text_preview: str) -> str:
-    f = filename.lower()
-    t = (text_preview or "").lower()
+def extract_text(p: Path) -> str:
+    suffix = p.suffix.lower()
+    if suffix == ".pdf":
+        reader = PdfReader(str(p))
+        pages = []
+        for page in reader.pages:
+            page_text = page.extract_text() or ""
+            pages.append(page_text)
+        raw = "\n".join(pages)
+        # Collapse excessive whitespace left by PDF extraction
+        raw = re.sub(r"\n{3,}", "\n\n", raw)
+        raw = re.sub(r" {2,}", " ", raw)
+        return raw.strip()
+    return p.read_text(encoding="utf-8", errors="ignore")
 
-    if "meta" in f or "meta-analysis" in t or "meta analysis" in t:
-        return "meta_analysis"
-    if "systematic review" in t or "review" in f:
-        return "review"
-    if "randomized" in t or "randomised" in t or "rct" in f or "trial" in f:
-        return "rct"
-    if "theory" in f or "theory" in t:
-        return "theory"
 
-    return "unknown"
+def infer_topic(filename: str) -> str | None:
+    # topic = file stem, normalised (e.g. "grossman_2004_mbsr")
+    stem = Path(filename).stem.strip().lower()
+    # replace spaces/dashes with underscores for consistency
+    stem = re.sub(r"[\s\-]+", "_", stem)
+    return stem or None
 
 
 def main() -> None:
-    # Keep same behavior as your file
     folder = PROJECT_ROOT / "knowledge"
-    files = [p for p in folder.rglob("*") if p.is_file() and p.suffix.lower() in {".md", ".txt"}]
+    files = [p for p in folder.rglob("*") if p.is_file() and p.suffix.lower() in {".md", ".txt", ".pdf"}]
     if not files:
-        raise SystemExit("No .md/.txt files found in ./knowledge")
+        raise SystemExit("No .md/.txt/.pdf files found in ./knowledge")
 
-    inserted, skipped = 0, 0
+    inserted, skipped, failed = 0, 0, 0
 
     with engine.begin() as conn:
         for p in files:
-            raw = p.read_text(encoding="utf-8", errors="ignore").strip()
-            if not raw:
+            try:
+                raw = extract_text(p)
+            except Exception as exc:
+                safe_print(f"  [SKIP] {p.name} -- could not extract text: {exc}")
+                failed += 1
+                continue
+
+            if not raw.strip():
+                safe_print(f"  [SKIP] {p.name} -- no text extracted")
+                failed += 1
                 continue
 
             chunks = chunk_text(raw)
-
-            topic = infer_topic_from_filename(p.name)
-            evidence_level = infer_evidence_level(p.name, raw[:4000])
-            evidence_priority = EVIDENCE_LEVEL_PRIORITY.get(evidence_level, 0)
-
-            try:
-                source = str(p.relative_to(PROJECT_ROOT))
-            except Exception:
-                source = str(p)
+            safe_print(f"  {p.name}: {len(chunks)} chunks")
+            topic = infer_topic(p.name)
+            source = str(p)
 
             BATCH = 64
             for i in range(0, len(chunks), BATCH):
@@ -149,42 +119,27 @@ def main() -> None:
                         skipped += 1
                         continue
 
-                    metadata = {
-                        "filename": p.name,
-                        "topic": topic,
-                        "evidence_level": evidence_level,
-                        "evidence_priority": evidence_priority,
-                    }
-
                     conn.execute(
-                        text(
-                            """
-                            INSERT INTO knowledge_chunks (content, topic, source, metadata, chunk_hash, embedding)
-                            VALUES (:content, :topic, :source, :metadata, :chunk_hash, :embedding)
-                            """
-                        ),
-                        {
-                            "content": content,
-                            "topic": topic,
-                            "source": source,
-                            "metadata": Json(metadata),
-                            "chunk_hash": h,
-                            "embedding": vec,
-                        },
-                    )
+    text(
+        """
+        INSERT INTO knowledge_chunks (content, topic, source, metadata, chunk_hash, embedding)
+        VALUES (:content, :topic, :source, :metadata, :chunk_hash, :embedding)
+        """
+    ),
+    {
+        "content": content,
+        "topic": topic,
+        "source": source,
+        "metadata": Json({"filename": p.name}),
+        "chunk_hash": h,
+        "embedding": vec,
+    },
+)
+
                     inserted += 1
 
-    print(f"Inserted: {inserted} | Skipped: {skipped}")
+    print(f"Inserted: {inserted} | Skipped (duplicate): {skipped} | Failed: {failed}")
 
 
 if __name__ == "__main__":
     main()
-
-
-# NEEDED for database config
-#-- enable uuid generator (choose ONE) 
-# CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
-# -- Set default UUID for id if id is uuid type
-# ALTER TABLE knowledge_chunks
-# ALTER COLUMN id SET DEFAULT gen_random_uuid();

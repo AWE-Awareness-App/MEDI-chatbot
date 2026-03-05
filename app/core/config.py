@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
 
     APP_NAME: str = "MEDI"
+    ENV: str = "local"
     LOG_LEVEL: str = "INFO"
     DATABASE_URL: str
     OPENAI_EMBED_MODEL: str
@@ -34,5 +35,6 @@ class Settings(BaseSettings):
     RAG_TOP_K: int = 5
     RAG_SKIP_SHORT_CHARS: int = 15
     CONF_ENFORCE_CITATIONS: float = 0.55
+    REDIS_URL:str
 
 settings = Settings()

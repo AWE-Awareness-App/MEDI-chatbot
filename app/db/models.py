@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, DateTime, ForeignKey, Text
+from sqlalchemy import String, DateTime, ForeignKey, Text, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from sqlalchemy.sql import func
 from app.db.base import Base
 
 def utcnow():
@@ -43,3 +43,23 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     conversation: Mapped["Conversation"] = relationship(back_populates="messages")
+
+class VoiceJob(Base):
+    __tablename__ = "voice_jobs"
+
+    id = Column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
+
+    source = Column(String, nullable=False)  # "whatsapp" | "web"
+    user_id = Column(String, nullable=False)
+
+    twilio_media_url = Column(Text, nullable=True)
+    audio_blob_path = Column(String, nullable=True)
+    twilio_message_sid = Column(String, nullable=True)  # stores inbound MessageSid
+
+    status = Column(String, nullable=False, default="queued")  # queued|processing|done|failed
+    transcript = Column(Text, nullable=True)
+    reply_text = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

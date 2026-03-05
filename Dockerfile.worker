@@ -1,0 +1,25 @@
+# Dockerfile.worker
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# ffmpeg is required for wav->mp3/ogg(opus)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
+
+# Install your python deps
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install piper-tts (Python module). Alternatively, use the standalone piper binary.
+RUN pip install --no-cache-dir piper-tts
+
+# Copy app
+COPY . .
+
+# Create media directories
+RUN mkdir -p /app/media/tts /app/models/piper
+
+ENV PYTHONUNBUFFERED=1
+CMD ["python", "-m", "rq", "worker", "medi"]
