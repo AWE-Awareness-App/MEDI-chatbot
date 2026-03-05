@@ -7,7 +7,7 @@ def create_voice_job(
     user_id: str,
     twilio_media_url: str | None,
     audio_blob_path: str | None,
-    twilio_message_sid:str | None
+    twilio_message_sid: str | None = None,
 ) -> str:
     job = VoiceJob(
         source=source,

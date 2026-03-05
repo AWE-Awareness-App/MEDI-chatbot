@@ -46,7 +46,10 @@ def twilio_webhook(
 
         enqueue_voice_job({"job_id": job_id})
         if MessageSid:
-            send_whatsapp_typing_indicator(MessageSid)
+            try:
+                send_whatsapp_typing_indicator(MessageSid)
+            except Exception:
+                pass
 
         # Immediate ack via REST (don’t block webhook)
         # send_whatsapp_text(to_number=From, body="Got your voice note — transcribing now…")

@@ -38,14 +38,14 @@ def process_voice_job(payload: dict) -> None:
 
     try:
         job = db.query(VoiceJob).filter(VoiceJob.id == job_id).one_or_none()
+        if not job:
+            return
+
         if job.source == "whatsapp" and job.twilio_message_sid:
             try:
                 send_whatsapp_typing_indicator(job.twilio_message_sid)
             except Exception:
                 pass
-
-        if not job:
-            return
 
         mark_processing(db, job_id)
 
@@ -60,6 +60,8 @@ def process_voice_job(payload: dict) -> None:
 
             # 2) transcribe
             transcript = transcribe_audio_bytes(audio_bytes)
+            print("heeeeere 4")
+
 
             # optional cleanup (recommended in local mode)
             delete_audio(job.audio_blob_path)
@@ -86,6 +88,7 @@ def process_voice_job(payload: dict) -> None:
                 tts = PiperTTS()
 
                 if job.source == "whatsapp":
+                    print("heeeeere 5")
                     # Generate OGG/Opus
                     tts_text = format_for_tts(reply)
                     out = tts.synthesize(text=tts_text, target="whatsapp")  # out.public_url -> /media/tts/xxx.ogg

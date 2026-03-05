@@ -18,6 +18,7 @@ from app.services.voice_jobs import create_voice_job, get_voice_job_public_dict
 from app.services.azure_blob import upload_audio_bytes
 from app.services.queue_service import enqueue_voice_job
 
+import os
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -93,6 +94,7 @@ async def web_voice_upload(
         user_id=user_id,
         twilio_media_url=None,
         audio_blob_path=blob_path,
+        twilio_message_sid=None,
     )
 
     enqueue_voice_job({"job_id": job_id})
@@ -108,7 +110,9 @@ def voice_job_status(job_id: str, db: Session = Depends(get_db)):
     return job
 
 
-TTS_DIR = Path("/app/.local_audio/tts").resolve()
+DEFAULT_AUDIO_DIR = (os.environ.get("LOCAL_AUDIO_STORAGE_DIR") or "/app/.local_audio").strip()
+TTS_STORAGE_DIR = (os.environ.get("TTS_STORAGE_DIR") or f"{DEFAULT_AUDIO_DIR}/tts").strip()
+TTS_DIR = Path(TTS_STORAGE_DIR).resolve()
 
 MIME = {
     ".mp3": "audio/mpeg",
