@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from app.core.config import settings
 
@@ -16,7 +16,7 @@ from app.routes.twilio_webhook import router as twilio_router
 
 from app.services.voice_jobs import create_voice_job, get_voice_job_public_dict
 from app.services.azure_blob import upload_audio_bytes
-from app.services.queue_service import enqueue_voice_job
+from app.services.voice_worker import process_voice_job
 
 import os
 from pathlib import Path
@@ -69,6 +69,7 @@ def read_latest_chat(user_uuid: str, limit: int = 50, db: Session = Depends(get_
 # -------------------------
 @app.post("/voice/process")
 async def web_voice_upload(
+    background_tasks: BackgroundTasks,
     user_id: str = Form(...),
     audio: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -97,7 +98,7 @@ async def web_voice_upload(
         twilio_message_sid=None,
     )
 
-    enqueue_voice_job({"job_id": job_id})
+    background_tasks.add_task(process_voice_job, {"job_id": job_id})
 
     return {"job_id": job_id, "status": "queued"}
 

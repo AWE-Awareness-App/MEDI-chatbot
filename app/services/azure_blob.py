@@ -1,7 +1,7 @@
 import os
 import uuid
 from pathlib import Path
-from typing import Optional
+from app.core.config import settings
 
 # Azure is optional for Option 3
 try:
@@ -10,15 +10,33 @@ except Exception:
     BlobServiceClient = None
     ContentSettings = None
 
+AZURE_AUDIO_CONTAINER = "medi-audio"
+
+
+def _azure_connection_string() -> str:
+    return (settings.AZURE_STORAGE_CONNECTION_STRING or "").strip()
+
+
+def _azure_container_client():
+    if BlobServiceClient is None:
+        raise RuntimeError("azure-storage-blob not installed but Azure storage is enabled")
+
+    conn = _azure_connection_string()
+    if not conn:
+        raise RuntimeError("Missing AZURE_STORAGE_CONNECTION_STRING")
+
+    bsc = BlobServiceClient.from_connection_string(conn)
+    container = bsc.get_container_client(AZURE_AUDIO_CONTAINER)
+    try:
+        container.create_container()
+    except Exception:
+        pass
+    return container
+
 
 def _use_local() -> bool:
-    # Preferred toggle
-    if os.getenv("USE_LOCAL_AUDIO_STORAGE", "").lower() in {"1", "true", "yes"}:
-        return True
-    # Auto fallback if no azure conn string
-    if not os.getenv("AZURE_STORAGE_CONNECTION_STRING"):
-        return True
-    return False
+    # Local mode is explicit; otherwise use Azure and fail fast if misconfigured.
+    return os.getenv("USE_LOCAL_AUDIO_STORAGE", "").lower() in {"1", "true", "yes"}
 
 
 def _local_dir() -> Path:
@@ -42,21 +60,9 @@ def upload_audio_bytes(data: bytes, content_type: str, filename: str) -> str:
         p.write_bytes(data)
         return f"local:{str(p)}"
 
-    # ---- Azure mode (kept for easy switch later) ----
-    if BlobServiceClient is None:
-        raise RuntimeError("azure-storage-blob not installed but Azure storage is enabled")
-
-    conn = os.environ["AZURE_STORAGE_CONNECTION_STRING"]
-    container = os.environ["AZURE_BLOB_CONTAINER"]
+    # ---- Azure mode ----
     blob_path = f"voices/{uid}/{safe_name}"
-
-    bsc = BlobServiceClient.from_connection_string(conn)
-    c = bsc.get_container_client(container)
-    try:
-        c.create_container()
-    except Exception:
-        pass
-
+    c = _azure_container_client()
     blob = c.get_blob_client(blob_path)
     blob.upload_blob(
         data,
@@ -75,15 +81,8 @@ def download_audio_bytes(storage_path: str) -> bytes:
         return p.read_bytes()
 
     if storage_path.startswith("azure:"):
-        if BlobServiceClient is None:
-            raise RuntimeError("azure-storage-blob not installed but Azure storage is enabled")
-
-        conn = os.environ["AZURE_STORAGE_CONNECTION_STRING"]
-        container = os.environ["AZURE_BLOB_CONTAINER"]
         blob_path = storage_path.replace("azure:", "", 1)
-
-        bsc = BlobServiceClient.from_connection_string(conn)
-        c = bsc.get_container_client(container)
+        c = _azure_container_client()
         blob = c.get_blob_client(blob_path)
         return blob.download_blob().readall()
 
@@ -105,5 +104,13 @@ def delete_audio(storage_path: str) -> None:
             p = Path(storage_path.replace("local:", "", 1))
             if p.exists():
                 p.unlink()
+            return
+
+        if storage_path.startswith("azure:"):
+            blob_path = storage_path.replace("azure:", "", 1)
+            c = _azure_container_client()
+            blob = c.get_blob_client(blob_path)
+            blob.delete_blob(delete_snapshots="include")
+            return
     except Exception:
         pass

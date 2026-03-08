@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Form
+from fastapi import APIRouter, BackgroundTasks, Depends, Form
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from twilio.twiml.messaging_response import MessagingResponse
@@ -7,7 +7,7 @@ from app.db.session import get_db
 from app.services.chat_service import handle_incoming_message
 from app.services.twilio_sender import send_whatsapp_menu, send_whatsapp_text
 from app.services.voice_jobs import create_voice_job
-from app.services.queue_service import enqueue_voice_job
+from app.services.voice_worker import process_voice_job
 
 from app.services.twilio_sender import send_whatsapp_typing_indicator
 
@@ -16,6 +16,7 @@ router = APIRouter()
 
 @router.post("/webhook/twilio")
 def twilio_webhook(
+    background_tasks: BackgroundTasks,
     From: str = Form(...),   # e.g. "whatsapp:+1647xxxxxxx"
     Body: str | None = Form(None),
     NumMedia: int = Form(0),
@@ -44,7 +45,7 @@ def twilio_webhook(
             twilio_message_sid=MessageSid,   # ✅ store it
         )
 
-        enqueue_voice_job({"job_id": job_id})
+        background_tasks.add_task(process_voice_job, {"job_id": job_id})
         if MessageSid:
             try:
                 send_whatsapp_typing_indicator(MessageSid)
