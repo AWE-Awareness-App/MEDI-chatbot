@@ -2,10 +2,16 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Background voice processing now runs inside API container.
+# ffmpeg is required by STT audio conversion.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy only application code — secrets/PDFs come in via env vars + volumes at runtime
+# Copy only application code - secrets/PDFs come in via env vars + volumes at runtime
 COPY app/ ./app/
 
 EXPOSE 8000

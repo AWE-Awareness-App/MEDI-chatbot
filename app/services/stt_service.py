@@ -1,13 +1,10 @@
-import uuid
 import subprocess
-from pathlib import Path
 
 import httpx
+import numpy as np
 from faster_whisper import WhisperModel
-from app.core.config import settings
 
-TMP_DIR = Path(getattr(settings, "TMP_DIR", "/tmp/medi_audio"))
-TMP_DIR.mkdir(parents=True, exist_ok=True)
+from app.core.config import settings
 
 # Required env/settings:
 # settings.WHISPER_MODEL_SIZE (default "small")
@@ -22,49 +19,55 @@ _model = WhisperModel(
 MAX_AUDIO_MB = int(getattr(settings, "MAX_AUDIO_MB", 8))
 MAX_AUDIO_SECONDS = int(getattr(settings, "MAX_AUDIO_SECONDS", 180))
 
-def _ffmpeg_to_wav(in_path: Path, out_path: Path) -> None:
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", str(in_path),
-        "-t", str(MAX_AUDIO_SECONDS),
-        "-ac", "1",
-        "-ar", "16000",
-        "-f", "wav",
-        str(out_path),
-    ]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed: {proc.stderr[:2000]}")
 
-def _transcribe_wav(wav_path: Path) -> str:
+def _ffmpeg_to_pcm_f32(audio_bytes: bytes) -> bytes:
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        "pipe:0",
+        "-t",
+        str(MAX_AUDIO_SECONDS),
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-f",
+        "f32le",
+        "pipe:1",
+    ]
+    proc = subprocess.run(cmd, input=audio_bytes, capture_output=True)
+    if proc.returncode != 0:
+        stderr = proc.stderr.decode("utf-8", errors="ignore")
+        raise RuntimeError(f"ffmpeg failed: {stderr[:2000]}")
+    return proc.stdout
+
+
+def _transcribe_pcm_f32(pcm_bytes: bytes) -> str:
+    if not pcm_bytes:
+        return ""
+
+    audio = np.frombuffer(pcm_bytes, dtype=np.float32)
     segments, _info = _model.transcribe(
-        str(wav_path),
+        audio,
         vad_filter=True,
         word_timestamps=False,
     )
     return " ".join(s.text.strip() for s in segments).strip()
 
+
 def transcribe_audio_bytes(audio_bytes: bytes) -> str:
     if len(audio_bytes) > MAX_AUDIO_MB * 1024 * 1024:
         raise ValueError("Audio too large")
 
-    uid = uuid.uuid4().hex
-    raw_path = TMP_DIR / f"{uid}.bin"
-    wav_path = TMP_DIR / f"{uid}.wav"
+    pcm = _ffmpeg_to_pcm_f32(audio_bytes)
+    return _transcribe_pcm_f32(pcm)
 
-    try:
-        raw_path.write_bytes(audio_bytes)
-        _ffmpeg_to_wav(raw_path, wav_path)
-        return _transcribe_wav(wav_path)
-    finally:
-        for p in (raw_path, wav_path):
-            try:
-                if p.exists():
-                    p.unlink()
-            except Exception:
-                pass
 
 def download_twilio_media(media_url: str) -> bytes:
+    print("downloading")
     with httpx.Client(timeout=60, follow_redirects=True) as client:
         r = client.get(media_url, auth=(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN))
         r.raise_for_status()

@@ -91,7 +91,7 @@ def process_voice_job(payload: dict) -> None:
                     print("heeeeere 5")
                     # Generate OGG/Opus
                     tts_text = format_for_tts(reply)
-                    out = tts.synthesize(text=tts_text, target="whatsapp")  # out.public_url -> /media/tts/xxx.ogg
+                    out = tts.synthesize(text=tts_text, target="whatsapp")  # out.public_url -> Blob SAS URL
 
                     # Send voice note/audio (Twilio fetches this URL)
                     # send_whatsapp_audio(to_number=job.user_id, media_url=out.public_url)
@@ -103,7 +103,7 @@ def process_voice_job(payload: dict) -> None:
                 elif job.source == "web":
                     # Generate MP3
                     tts_text = format_for_tts(reply)
-                    out = tts.synthesize(text=tts_text, target="web")  # out.public_url -> /media/tts/xxx.mp3
+                    out = tts.synthesize(text=tts_text, target="web")  # out.public_url -> Blob SAS URL
 
                     # Store audio url in DB if you have fields (recommended)
                     _try_store_web_audio_fields(job, audio_url=out.public_url, mime="audio/mpeg")
@@ -120,6 +120,7 @@ def process_voice_job(payload: dict) -> None:
         except Exception as e:
             print("ERRor", e)
             mark_failed(db, job_id, error=str(e))
+            print("error",e)
             if job.source == "whatsapp":
                 send_whatsapp_text(
                     to_number=job.user_id,
@@ -128,3 +129,4 @@ def process_voice_job(payload: dict) -> None:
 
     finally:
         db.close()
+

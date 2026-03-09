@@ -1,39 +1,35 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
-from app.core.config import settings
 
+from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine, get_db
 
 # registers models
 from app.db import models  # noqa: F401
 
+from app.routes.schemas import ChatHistoryResponse, ChatRequest, ChatResponse
+from app.routes.twilio_webhook import router as twilio_router
+from app.services.azure_blob import upload_audio_bytes
 from app.services.chat_service import handle_incoming_message
 from app.services.history_repo import get_chat_history, get_latest_active_conversation_id
-
-from app.routes.schemas import ChatRequest, ChatResponse, ChatHistoryResponse
-from app.routes.twilio_webhook import router as twilio_router
-
 from app.services.voice_jobs import create_voice_job, get_voice_job_public_dict
-from app.services.azure_blob import upload_audio_bytes
-from app.services.queue_service import enqueue_voice_job
-
-import os
-from pathlib import Path
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from app.services.voice_worker import process_voice_job
 
 
 app = FastAPI(title=settings.APP_NAME)
 app.include_router(twilio_router)
 
+
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
 
+
 @app.get("/health")
 def health():
     return {"ok": True, "app": settings.APP_NAME, "env": settings.ENV}
+
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest, db: Session = Depends(get_db)):
@@ -45,6 +41,7 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     )
     return result
 
+
 @app.get("/conversations/{conversation_id}/messages", response_model=ChatHistoryResponse)
 def read_chat_history(conversation_id: str, limit: int = 50, offset: int = 0, db: Session = Depends(get_db)):
     rows = get_chat_history(db, conversation_id=conversation_id, limit=limit, offset=offset)
@@ -52,6 +49,7 @@ def read_chat_history(conversation_id: str, limit: int = 50, offset: int = 0, db
         "conversation_id": conversation_id,
         "messages": [{"role": m.role, "content": m.content, "created_at": m.created_at} for m in rows],
     }
+
 
 @app.get("/users/{user_uuid}/latest-messages", response_model=ChatHistoryResponse)
 def read_latest_chat(user_uuid: str, limit: int = 50, db: Session = Depends(get_db)):
@@ -64,16 +62,14 @@ def read_latest_chat(user_uuid: str, limit: int = 50, db: Session = Depends(get_
         "messages": [{"role": m.role, "content": m.content, "created_at": m.created_at} for m in rows],
     }
 
-# -------------------------
-# Web voice note upload
-# -------------------------
+
 @app.post("/voice/process")
 async def web_voice_upload(
+    background_tasks: BackgroundTasks,
     user_id: str = Form(...),
     audio: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    print("audio",audio)
     if not (audio.content_type or "").startswith("audio/"):
         raise HTTPException(status_code=400, detail="audio file required")
 
@@ -81,11 +77,11 @@ async def web_voice_upload(
     if not data:
         raise HTTPException(status_code=400, detail="empty audio")
 
-    # Save to Azure Blob so the worker can access it across instances
     blob_path = upload_audio_bytes(
         data=data,
         content_type=audio.content_type or "application/octet-stream",
         filename=audio.filename or "voice",
+        prefix="input",
     )
 
     job_id = create_voice_job(
@@ -97,11 +93,11 @@ async def web_voice_upload(
         twilio_message_sid=None,
     )
 
-    enqueue_voice_job({"job_id": job_id})
+    background_tasks.add_task(process_voice_job, {"job_id": job_id})
 
     return {"job_id": job_id, "status": "queued"}
 
-# Poll job status from web UI
+
 @app.get("/voice/jobs/{job_id}")
 def voice_job_status(job_id: str, db: Session = Depends(get_db)):
     job = get_voice_job_public_dict(db, job_id)
@@ -109,27 +105,3 @@ def voice_job_status(job_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="not found")
     return job
 
-
-DEFAULT_AUDIO_DIR = (os.environ.get("LOCAL_AUDIO_STORAGE_DIR") or "/app/.local_audio").strip()
-TTS_STORAGE_DIR = (os.environ.get("TTS_STORAGE_DIR") or f"{DEFAULT_AUDIO_DIR}/tts").strip()
-TTS_DIR = Path(TTS_STORAGE_DIR).resolve()
-
-MIME = {
-    ".mp3": "audio/mpeg",
-    ".ogg": "audio/ogg",   # ogg container + opus codec
-    ".opus": "audio/ogg",
-    ".wav": "audio/wav",
-}
-
-@app.get("/media/tts/{filename}")
-def get_tts_audio(filename: str):
-    # prevent path traversal
-    path = (TTS_DIR / filename).resolve()
-    if not str(path).startswith(str(TTS_DIR)):
-        raise HTTPException(status_code=400, detail="Invalid filename")
-
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Not found")
-
-    media_type = MIME.get(path.suffix.lower(), "application/octet-stream")
-    return FileResponse(str(path), media_type=media_type, filename=path.name)
