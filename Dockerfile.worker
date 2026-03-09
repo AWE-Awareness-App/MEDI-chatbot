@@ -12,14 +12,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install piper-tts (Python module). Alternatively, use the standalone piper binary.
-RUN pip install --no-cache-dir piper-tts
-
 # Copy app
 COPY . .
 
 # Create media directories
-RUN mkdir -p /app/media/tts /app/models/piper
+RUN mkdir -p /app/media/tts
 
 ENV PYTHONUNBUFFERED=1
 CMD ["python", "-m", "rq", "worker", "medi"]

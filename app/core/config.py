@@ -36,5 +36,11 @@ class Settings(BaseSettings):
     RAG_SKIP_SHORT_CHARS: int = 15
     CONF_ENFORCE_CITATIONS: float = 0.55
     REDIS_URL:str
+    AZURE_SPEECH_KEY: str | None = None
+    AZURE_SPEECH_REGION: str | None = None
+    AZURE_TTS_VOICE: str | None = None
+    AZURE_TTS_STYLE: str | None = None
+    AZURE_TTS_RATE: str | None = None
+    AZURE_TTS_PITCH: str | None = None
 
 settings = Settings()
