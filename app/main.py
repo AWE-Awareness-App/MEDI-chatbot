@@ -1,33 +1,24 @@
 # app/main.py
 
-from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
-from app.core.config import settings
 
-# DB: Base + engine + session dependency
+from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine, get_db
 
-# IMPORTANT: this import registers your models with SQLAlchemy
-# (so Base.metadata.create_all can actually create tables)
+# registers models
 from app.db import models  # noqa: F401
 
+from app.routes.schemas import ChatHistoryResponse, ChatRequest, ChatResponse
+from app.routes.twilio_webhook import router as twilio_router
+from app.services.azure_blob import upload_audio_bytes
 from app.services.chat_service import handle_incoming_message
 from app.services.history_repo import get_chat_history, get_latest_active_conversation_id
+from app.services.voice_jobs import create_voice_job, get_voice_job_public_dict
+from app.services.voice_worker import process_voice_job
 
-from app.routes.schemas import ChatRequest, ChatResponse, ChatHistoryResponse
-from app.routes.schemas import ChatHistoryResponse, MessageOut
-from app.routes.twilio_webhook import router as twilio_router
-
-
-
-# Repo helpers
-from app.services.chat_repo import (
-    get_or_create_user,
-    get_or_create_active_conversation,
-    save_message,
-)
 
 app = FastAPI(title=settings.APP_NAME)
 
@@ -44,7 +35,6 @@ app.include_router(twilio_router)
 
 @app.on_event("startup")
 def on_startup():
-    # Create tables if they don't exist (OK for MVP; later use Alembic migrations)
     Base.metadata.create_all(bind=engine)
 
 
@@ -53,28 +43,11 @@ def health():
     return {"ok": True, "app": settings.APP_NAME, "env": settings.ENV}
 
 
-# One-time helper: create tables manually (useful while debugging)
-@app.post("/debug/create-tables")
-def create_tables():
-    Base.metadata.create_all(bind=engine)
-    return {"ok": True, "message": "tables created (if they did not already exist)"}
-
-
-@app.post("/debug/seed")
-def debug_seed(db: Session = Depends(get_db)):
-    user = get_or_create_user(db, source="whatsapp", external_id="whatsapp:+10000000000")
-    convo = get_or_create_active_conversation(db, user_id=user.id)
-
-    save_message(db, convo.id, "user", "hello medi")
-    save_message(db, convo.id, "assistant", "hello! how can I help?")
-
-    return {"user_id": user.id, "conversation_id": convo.id}
-
 @app.post("/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     result = handle_incoming_message(
         db=db,
-        source="web",               # for now, web/local testing
+        source="web",
         external_id=payload.user_id,
         text=payload.text,
     )
@@ -84,13 +57,9 @@ def chat(payload: ChatRequest, db: Session = Depends(get_db)):
 @app.get("/conversations/{conversation_id}/messages", response_model=ChatHistoryResponse)
 def read_chat_history(conversation_id: str, limit: int = 50, offset: int = 0, db: Session = Depends(get_db)):
     rows = get_chat_history(db, conversation_id=conversation_id, limit=limit, offset=offset)
-
     return {
         "conversation_id": conversation_id,
-        "messages": [
-            {"role": m.role, "content": m.content, "created_at": m.created_at}
-            for m in rows
-        ],
+        "messages": [{"role": m.role, "content": m.content, "created_at": m.created_at} for m in rows],
     }
 
 
@@ -99,9 +68,52 @@ def read_latest_chat(user_uuid: str, limit: int = 50, db: Session = Depends(get_
     convo_id = get_latest_active_conversation_id(db, user_id=user_uuid)
     if not convo_id:
         raise HTTPException(status_code=404, detail="No active conversation found")
-
     rows = get_chat_history(db, conversation_id=convo_id, limit=limit, offset=0)
     return {
         "conversation_id": convo_id,
         "messages": [{"role": m.role, "content": m.content, "created_at": m.created_at} for m in rows],
     }
+
+
+@app.post("/voice/process")
+async def web_voice_upload(
+    background_tasks: BackgroundTasks,
+    user_id: str = Form(...),
+    audio: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    if not (audio.content_type or "").startswith("audio/"):
+        raise HTTPException(status_code=400, detail="audio file required")
+
+    data = await audio.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty audio")
+
+    blob_path = upload_audio_bytes(
+        data=data,
+        content_type=audio.content_type or "application/octet-stream",
+        filename=audio.filename or "voice",
+        prefix="input",
+    )
+
+    job_id = create_voice_job(
+        db=db,
+        source="web",
+        user_id=user_id,
+        twilio_media_url=None,
+        audio_blob_path=blob_path,
+        twilio_message_sid=None,
+    )
+
+    background_tasks.add_task(process_voice_job, {"job_id": job_id})
+
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.get("/voice/jobs/{job_id}")
+def voice_job_status(job_id: str, db: Session = Depends(get_db)):
+    job = get_voice_job_public_dict(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="not found")
+    return job
+

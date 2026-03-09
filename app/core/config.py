@@ -11,7 +11,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-
     APP_NAME: str = "MEDI"
     ENV: str = "local"
     LOG_LEVEL: str = "INFO"
@@ -30,5 +29,22 @@ class Settings(BaseSettings):
 
     ANTHROPIC_API_KEY: str | None = None
     ANTHROPIC_MODEL: str | None = None
+
+    DEBUG_RAG: bool = True
+    RAG_TOP_K: int = 5
+    RAG_SKIP_SHORT_CHARS: int = 15
+    CONF_ENFORCE_CITATIONS: float = 0.55
+
+    AZURE_STORAGE_CONNECTION_STRING: str | None = None
+    AZURE_STORAGE_CONTAINER: str = "medi-audio"
+    AZURE_BLOB_URL_TTL_SECONDS: int = 86400
+
+    AZURE_SPEECH_KEY: str | None = None
+    AZURE_SPEECH_REGION: str | None = None
+    AZURE_TTS_VOICE: str = "en-US-JennyNeural"
+    AZURE_TTS_STYLE: str | None = None
+    AZURE_TTS_RATE: str = "0%"
+    AZURE_TTS_PITCH: str = "0%"
+
 
 settings = Settings()

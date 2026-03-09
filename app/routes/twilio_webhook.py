@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Form
+from fastapi import APIRouter, BackgroundTasks, Depends, Form
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from twilio.twiml.messaging_response import MessagingResponse
@@ -6,27 +6,61 @@ from twilio.twiml.messaging_response import MessagingResponse
 from app.db.session import get_db
 from app.services.chat_service import handle_incoming_message
 from app.services.twilio_sender import send_whatsapp_menu
+from app.services.voice_jobs import create_voice_job
+from app.services.voice_worker import process_voice_job
+
+from app.services.twilio_sender import send_whatsapp_typing_indicator
+
 
 router = APIRouter()
 
 @router.post("/webhook/twilio")
 def twilio_webhook(
+    background_tasks: BackgroundTasks,
     From: str = Form(...),   # e.g. "whatsapp:+1647xxxxxxx"
-    Body: str = Form(...),
+    Body: str | None = Form(None),
+    NumMedia: int = Form(0),
+    MediaUrl0: str | None = Form(None),
+    MediaContentType0: str | None = Form(None),
     db: Session = Depends(get_db),
+    MessageSid: str | None = Form(None)
+
 ):
     text = (Body or "").strip()
-    print("numer",Form(...))
 
-    # 1) If user wants menu, send the quick-reply template (buttons)
+    # 1) Menu fast path (template buttons)
     if text.lower() in {"menu", "help", "start"}:
         send_whatsapp_menu(to_number=From)
-
-        # Return empty TwiML so Twilio doesn't also send a second text reply
         twiml = MessagingResponse()
         return Response(content=str(twiml), media_type="application/xml")
 
-    # 2) Otherwise normal chat pipeline (stores msg + replies)
+    # 2) Voice note path (WhatsApp audio)
+    if NumMedia and MediaUrl0 and (MediaContentType0 or "").startswith("audio/"):
+        job_id = create_voice_job(
+            db=db,
+            source="whatsapp",
+            user_id=From,
+            twilio_media_url=MediaUrl0,
+            audio_blob_path=None,
+            twilio_message_sid=MessageSid,
+        )
+
+        background_tasks.add_task(process_voice_job, {"job_id": job_id})
+        if MessageSid:
+            try:
+                send_whatsapp_typing_indicator(MessageSid)
+            except Exception:
+                pass
+
+        twiml = MessagingResponse()
+        return Response(content=str(twiml), media_type="application/xml")
+
+    # 3) Normal text pipeline (existing behavior)
+    if not text:
+        # Don't send TwiML reply for empty body; just ignore
+        twiml = MessagingResponse()
+        return Response(content=str(twiml), media_type="application/xml")
+
     result = handle_incoming_message(
         db=db,
         source="whatsapp",
@@ -34,6 +68,8 @@ def twilio_webhook(
         text=text,
     )
 
+    # Keep TwiML reply for text messages (your current behavior)
     twiml = MessagingResponse()
     twiml.message(result["reply"])
     return Response(content=str(twiml), media_type="application/xml")
+
