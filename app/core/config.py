@@ -46,5 +46,7 @@ class Settings(BaseSettings):
     AZURE_TTS_RATE: str = "0%"
     AZURE_TTS_PITCH: str = "0%"
 
+    CHATTERBOX_DEVICE: str = "cpu"
+
 
 settings = Settings()

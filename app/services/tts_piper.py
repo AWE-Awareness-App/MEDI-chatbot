@@ -1,10 +1,11 @@
 import hashlib
+import io
 import os
 import re
 import subprocess
-import tempfile
+import threading
+import wave
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal
 from xml.sax.saxutils import escape as xml_escape
 
@@ -41,51 +42,56 @@ def _ext_for_target(target: Target) -> str:
     return "mp3"
 
 
-def _resolve_piper_model_path() -> str:
-    configured = (os.getenv("PIPER_MODEL_PATH") or "").strip()
+def _is_valid_azure_speech_key(value: str) -> bool:
+    return bool(re.fullmatch(r"[A-Fa-f0-9]{32}", (value or "").strip()))
 
-    candidates: list[Path] = []
-    if configured:
-        candidates.append(Path(configured))
 
-    candidates.append(Path("/app/piper_models/en_US-hfc_female-medium.onnx"))
-    candidates.append(
-        Path(__file__).resolve().parents[2] / "piper_models" / "en_US-hfc_female-medium.onnx"
-    )
+def _flatten_samples(obj) -> list[float]:
+    if isinstance(obj, (list, tuple)):
+        out: list[float] = []
+        for item in obj:
+            out.extend(_flatten_samples(item))
+        return out
 
-    for path in candidates:
-        if path.is_file():
-            return str(path)
+    try:
+        return [float(obj)]
+    except Exception:
+        return []
 
-    if configured:
-        raise RuntimeError(f"PIPER_MODEL_PATH does not exist: {configured}")
 
-    raise RuntimeError(
-        "Azure Speech is not configured and no Piper model was found. "
-        "Set AZURE_SPEECH_KEY/AZURE_SPEECH_REGION or PIPER_MODEL_PATH."
-    )
+def _env_float(name: str, default: float) -> float:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except Exception:
+        return default
 
 
 class PiperTTS:
     """
     Kept class name for compatibility with existing imports.
     Backend selection:
-    - Azure Neural TTS if AZURE_SPEECH_KEY and AZURE_SPEECH_REGION are set
-    - Piper fallback otherwise
+    - Azure Neural TTS if AZURE_SPEECH_KEY and AZURE_SPEECH_REGION are set correctly
+    - Chatterbox fallback otherwise
     """
+
+    _chatterbox_model = None
+    _chatterbox_device: str | None = None
+    _chatterbox_lock = threading.Lock()
 
     def __init__(self):
         self.speech_key = (os.getenv("AZURE_SPEECH_KEY") or "").strip()
         self.speech_region = (os.getenv("AZURE_SPEECH_REGION") or "").strip()
-        self.use_azure = bool(self.speech_region and re.fullmatch(r"[A-Fa-f0-9]{32}", self.speech_key or ""))
+        self.use_azure = bool(self.speech_region and _is_valid_azure_speech_key(self.speech_key))
 
         self.voice = (os.getenv("AZURE_TTS_VOICE") or "en-US-JennyNeural").strip()
         self.style = (os.getenv("AZURE_TTS_STYLE") or "").strip()
         self.rate = (os.getenv("AZURE_TTS_RATE") or "0%").strip()
         self.pitch = (os.getenv("AZURE_TTS_PITCH") or "0%").strip()
 
-        if not self.use_azure:
-            self.piper_model_path = _resolve_piper_model_path()
+        self.chatterbox_device = (os.getenv("CHATTERBOX_DEVICE") or "").strip().lower()
 
         ttl_raw = (os.getenv("AZURE_BLOB_URL_TTL_SECONDS") or "86400").strip()
         self.url_ttl_seconds = int(ttl_raw or "86400")
@@ -139,72 +145,154 @@ class PiperTTS:
 
         return response.content
 
-    def _synthesize_piper(self, text: str, target: Target) -> bytes:
-        with tempfile.TemporaryDirectory(prefix="medi_tts_") as tmp:
-            wav_path = Path(tmp) / "out.wav"
-            if target == "web":
-                out_path = Path(tmp) / "out.mp3"
-                ffmpeg_cmd = [
-                    "ffmpeg",
-                    "-y",
-                    "-hide_banner",
-                    "-loglevel",
-                    "error",
-                    "-i",
-                    str(wav_path),
-                    "-codec:a",
-                    "libmp3lame",
-                    "-q:a",
-                    "4",
-                    str(out_path),
-                ]
-            else:
-                out_path = Path(tmp) / "out.ogg"
-                ffmpeg_cmd = [
-                    "ffmpeg",
-                    "-y",
-                    "-hide_banner",
-                    "-loglevel",
-                    "error",
-                    "-i",
-                    str(wav_path),
-                    "-c:a",
-                    "libopus",
-                    "-b:a",
-                    "24k",
-                    "-vbr",
-                    "on",
-                    "-application",
-                    "voip",
-                    str(out_path),
-                ]
+    def _resolve_chatterbox_device(self) -> str:
+        if self.chatterbox_device:
+            return self.chatterbox_device
 
-            piper_cmd = [
-                "python",
-                "-m",
-                "piper",
-                "--model",
-                self.piper_model_path,
-                "--output_file",
-                str(wav_path),
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                return "cuda"
+        except Exception:
+            pass
+
+        return "cpu"
+
+    def _get_chatterbox_model(self):
+        try:
+            from chatterbox.tts import ChatterboxTTS
+        except Exception as exc:
+            raise RuntimeError(
+                "Missing chatterbox-tts dependency. Install with `pip install chatterbox-tts`."
+            ) from exc
+
+        device = self._resolve_chatterbox_device()
+
+        with self._chatterbox_lock:
+            if self._chatterbox_model is None or self._chatterbox_device != device:
+                self._chatterbox_model = ChatterboxTTS.from_pretrained(device=device)
+                self._chatterbox_device = device
+
+        return self._chatterbox_model
+
+    def _wav_tensor_to_bytes(self, wav_tensor, sample_rate: int) -> bytes:
+        # Fast path with numpy if available.
+        try:
+            import numpy as np
+
+            try:
+                import torch
+
+                if isinstance(wav_tensor, torch.Tensor):
+                    arr = wav_tensor.detach().cpu().numpy()
+                else:
+                    arr = np.asarray(wav_tensor)
+            except Exception:
+                arr = np.asarray(wav_tensor)
+
+            arr = np.asarray(arr, dtype=np.float32).squeeze()
+            if arr.ndim == 0:
+                arr = np.asarray([float(arr)], dtype=np.float32)
+            elif arr.ndim > 1:
+                arr = arr.reshape(-1)
+
+            arr = np.clip(arr, -1.0, 1.0)
+            pcm_bytes = (arr * 32767.0).astype(np.int16).tobytes()
+
+        except Exception:
+            # Fallback path without numpy.
+            try:
+                import torch
+
+                if isinstance(wav_tensor, torch.Tensor):
+                    samples = wav_tensor.detach().cpu().flatten().tolist()
+                else:
+                    samples = _flatten_samples(wav_tensor)
+            except Exception:
+                samples = _flatten_samples(wav_tensor)
+
+            pcm = bytearray()
+            for s in samples:
+                if s > 1.0:
+                    s = 1.0
+                elif s < -1.0:
+                    s = -1.0
+                iv = int(s * 32767.0)
+                if iv > 32767:
+                    iv = 32767
+                elif iv < -32768:
+                    iv = -32768
+                pcm.extend(int(iv).to_bytes(2, byteorder="little", signed=True))
+            pcm_bytes = bytes(pcm)
+
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(int(sample_rate))
+            wf.writeframes(pcm_bytes)
+        return buf.getvalue()
+
+    def _transcode_wav_bytes(self, wav_bytes: bytes, target: Target) -> bytes:
+        if target == "web":
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                "pipe:0",
+                "-codec:a",
+                "libmp3lame",
+                "-q:a",
+                "4",
+                "-f",
+                "mp3",
+                "pipe:1",
             ]
-            p = subprocess.run(
-                piper_cmd,
-                input=text.encode("utf-8"),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-            )
-            if p.returncode != 0 or not wav_path.exists():
-                err = p.stderr.decode("utf-8", errors="ignore")
-                raise RuntimeError(f"Piper failed: {err}")
+        else:
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                "pipe:0",
+                "-c:a",
+                "libopus",
+                "-b:a",
+                "24k",
+                "-vbr",
+                "on",
+                "-application",
+                "voip",
+                "-f",
+                "ogg",
+                "pipe:1",
+            ]
 
-            p2 = subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-            if p2.returncode != 0 or not out_path.exists():
-                err = p2.stderr.decode("utf-8", errors="ignore")
-                raise RuntimeError(f"ffmpeg failed: {err}")
+        proc = subprocess.run(cmd, input=wav_bytes, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        if proc.returncode != 0 or not proc.stdout:
+            err = proc.stderr.decode("utf-8", errors="ignore")
+            raise RuntimeError(f"ffmpeg failed: {err}")
 
-            return out_path.read_bytes()
+        return proc.stdout
+
+    def _synthesize_chatterbox(self, text: str, target: Target) -> bytes:
+        model = self._get_chatterbox_model()
+        # Keep Chatterbox output warm and steady (less rushed pacing).
+        wav = model.generate(
+            text,
+            exaggeration=_env_float("CHATTERBOX_EXAGGERATION", 0.3),
+            cfg_weight=_env_float("CHATTERBOX_CFG_WEIGHT", 0.3),
+            temperature=_env_float("CHATTERBOX_TEMPERATURE", 0.3),
+        )
+        sr = int(getattr(model, "sr", 24000))
+        wav_bytes = self._wav_tensor_to_bytes(wav, sample_rate=sr)
+        return self._transcode_wav_bytes(wav_bytes, target=target)
 
     def synthesize(self, text: str, target: Target, voice: str = "default") -> TTSOut:
         text = (text or "").strip()
@@ -218,7 +306,7 @@ class PiperTTS:
         if self.use_azure:
             audio_bytes = self._synthesize_azure(text=text, target=target)
         else:
-            audio_bytes = self._synthesize_piper(text=text, target=target)
+            audio_bytes = self._synthesize_chatterbox(text=text, target=target)
 
         storage_path = upload_audio_bytes(
             data=audio_bytes,
@@ -235,4 +323,3 @@ class PiperTTS:
             storage_path=storage_path,
             file_path=None,
         )
-
