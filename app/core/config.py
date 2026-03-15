@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     APP_NAME: str = "MEDI"
     ENV: str = "local"
     LOG_LEVEL: str = "INFO"
+    TRACE_FUNCTIONS: bool = True
+    TRACE_LOG_ARGS: bool = False
+    TRACE_INCLUDE_PRIVATE: bool = False
     DATABASE_URL: str
     OPENAI_EMBED_MODEL: str
     OPENAI_API_KEY: str
@@ -42,9 +45,16 @@ class Settings(BaseSettings):
     AZURE_SPEECH_KEY: str | None = None
     AZURE_SPEECH_REGION: str | None = None
     AZURE_TTS_VOICE: str = "en-US-JennyNeural"
+    AZURE_TTS_VOICE_FR: str | None = None
+    AZURE_TTS_VOICE_JA: str | None = None
+    AZURE_TTS_VOICE_AR: str | None = None
     AZURE_TTS_STYLE: str | None = None
     AZURE_TTS_RATE: str = "0%"
     AZURE_TTS_PITCH: str = "0%"
+    CHATTERBOX_DEVICE: str = "cpu"
+    CHATTERBOX_EXAGGERATION: float = 0.3
+    CHATTERBOX_CFG_WEIGHT: float = 0.3
+    CHATTERBOX_TEMPERATURE: float = 0.3
 
 
 settings = Settings()

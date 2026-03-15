@@ -1,7 +1,10 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import List, Tuple
+import logging
 import re
+from typing import List, Tuple
+
+from app.core.observability import instrument_module_functions
 
 @dataclass
 class SeverityResult:
@@ -43,6 +46,7 @@ MEDICAL_RISK_PATTERNS: List[Tuple[str, str]] = [
     (r"\b(chest pain|can't breathe|shortness of breath)\b", "possible_urgent_medical"),
     (r"\b(fainting|passed out)\b", "possible_urgent_medical"),
 ]
+logger = logging.getLogger(__name__)
 
 def _match_any(text: str, patterns: List[Tuple[str, str]]) -> List[str]:
     reasons: List[str] = []
@@ -52,7 +56,7 @@ def _match_any(text: str, patterns: List[Tuple[str, str]]) -> List[str]:
     return reasons
 
 def score_severity(user_text: str) -> SeverityResult:
-    print("ahhhhaaaaaaaaaaaaaaaa")
+    logger.info("scoring severity text_chars=%s", len((user_text or "").strip()))
     t = (user_text or "").strip()
     if not t:
         return SeverityResult(level=0, reasons=[], is_crisis=False, is_high=False)
@@ -74,3 +78,6 @@ def score_severity(user_text: str) -> SeverityResult:
         return SeverityResult(level=2, reasons=sorted(set(moderate)), is_crisis=False, is_high=False)
 
     return SeverityResult(level=1, reasons=["general"], is_crisis=False, is_high=False)
+
+
+instrument_module_functions(globals(), include_private=False)

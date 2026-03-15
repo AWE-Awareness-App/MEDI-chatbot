@@ -59,6 +59,9 @@ class VoiceJob(Base):
     status = Column(String, nullable=False, default="queued")  # queued|processing|done|failed
     transcript = Column(Text, nullable=True)
     reply_text = Column(Text, nullable=True)
+    reply_audio_url = Column(Text, nullable=True)
+    reply_audio_mime = Column(String, nullable=True)
+    reply_audio_path = Column(String, nullable=True)
     error = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
