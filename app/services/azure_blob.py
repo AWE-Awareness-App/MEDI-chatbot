@@ -1,6 +1,9 @@
+import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+
+from app.core.observability import instrument_module_functions
 
 # Azure is required for voice storage
 try:
@@ -15,6 +18,8 @@ except Exception:
     BlobServiceClient = None
     ContentSettings = None
     generate_blob_sas = None
+
+logger = logging.getLogger(__name__)
 
 
 def _require_azure_sdk() -> None:
@@ -91,11 +96,13 @@ def upload_audio_bytes(
     client = _blob_service_client()
     container_client = _ensure_container(client)
     blob = container_client.get_blob_client(blob_path)
+    logger.info("azure blob upload start path=%s bytes=%s type=%s", blob_path, len(data), content_type)
     blob.upload_blob(
         data,
         overwrite=True,
         content_settings=ContentSettings(content_type=content_type),
     )
+    logger.info("azure blob upload done path=%s", blob_path)
     return f"azure:{blob_path}"
 
 
@@ -109,7 +116,9 @@ def download_audio_bytes(storage_path: str) -> bytes:
     client = _blob_service_client()
     container_client = client.get_container_client(_container_name())
     blob = container_client.get_blob_client(blob_path)
-    return blob.download_blob().readall()
+    data = blob.download_blob().readall()
+    logger.info("azure blob download done path=%s bytes=%s", blob_path, len(data))
+    return data
 
 
 def delete_audio(storage_path: str | None) -> None:
@@ -125,8 +134,9 @@ def delete_audio(storage_path: str | None) -> None:
         client = _blob_service_client()
         container_client = client.get_container_client(_container_name())
         container_client.get_blob_client(blob_path).delete_blob(delete_snapshots="include")
-    except Exception:
-        pass
+        logger.info("azure blob delete done path=%s", blob_path)
+    except Exception as exc:
+        logger.warning("azure blob delete skipped path=%s error=%s", storage_path, exc)
 
 
 def _connection_parts() -> dict[str, str]:
@@ -176,4 +186,9 @@ def build_blob_read_url(storage_path: str, expiry_seconds: int | None = None) ->
         expiry=datetime.now(timezone.utc) + timedelta(seconds=ttl),
     )
 
-    return f"{blob_endpoint}/{_container_name()}/{blob_path}?{sas}"
+    url = f"{blob_endpoint}/{_container_name()}/{blob_path}?{sas}"
+    logger.info("azure blob read url generated path=%s ttl_seconds=%s", blob_path, ttl)
+    return url
+
+
+instrument_module_functions(globals(), include_private=True)

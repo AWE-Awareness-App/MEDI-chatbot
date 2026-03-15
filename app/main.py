@@ -2,7 +2,9 @@ from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.observability import configure_logging, trace_call
 from app.db.base import Base
+from app.db.schema_patch import ensure_runtime_schema
 from app.db.session import engine, get_db
 
 # registers models
@@ -17,32 +19,40 @@ from app.services.voice_jobs import create_voice_job, get_voice_job_public_dict
 from app.services.voice_worker import process_voice_job
 
 
+configure_logging(settings.LOG_LEVEL)
+
 app = FastAPI(title=settings.APP_NAME)
 app.include_router(twilio_router)
 
 
 @app.on_event("startup")
+@trace_call
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    ensure_runtime_schema(engine)
 
 
 @app.get("/health")
+@trace_call
 def health():
     return {"ok": True, "app": settings.APP_NAME, "env": settings.ENV}
 
 
 @app.post("/chat", response_model=ChatResponse)
+@trace_call
 def chat(payload: ChatRequest, db: Session = Depends(get_db)):
     result = handle_incoming_message(
         db=db,
         source="web",
         external_id=payload.user_id,
         text=payload.text,
+        language_hint=payload.language or "en",
     )
     return result
 
 
 @app.get("/conversations/{conversation_id}/messages", response_model=ChatHistoryResponse)
+@trace_call
 def read_chat_history(conversation_id: str, limit: int = 50, offset: int = 0, db: Session = Depends(get_db)):
     rows = get_chat_history(db, conversation_id=conversation_id, limit=limit, offset=offset)
     return {
@@ -52,6 +62,7 @@ def read_chat_history(conversation_id: str, limit: int = 50, offset: int = 0, db
 
 
 @app.get("/users/{user_uuid}/latest-messages", response_model=ChatHistoryResponse)
+@trace_call
 def read_latest_chat(user_uuid: str, limit: int = 50, db: Session = Depends(get_db)):
     convo_id = get_latest_active_conversation_id(db, user_id=user_uuid)
     if not convo_id:
@@ -64,10 +75,12 @@ def read_latest_chat(user_uuid: str, limit: int = 50, db: Session = Depends(get_
 
 
 @app.post("/voice/process")
+@trace_call
 async def web_voice_upload(
     background_tasks: BackgroundTasks,
     user_id: str = Form(...),
     audio: UploadFile = File(...),
+    language: str = Form("en"),
     db: Session = Depends(get_db),
 ):
     if not (audio.content_type or "").startswith("audio/"):
@@ -93,12 +106,16 @@ async def web_voice_upload(
         twilio_message_sid=None,
     )
 
-    background_tasks.add_task(process_voice_job, {"job_id": job_id})
+    background_tasks.add_task(
+        process_voice_job,
+        {"job_id": job_id, "preferred_language": language or "en"},
+    )
 
     return {"job_id": job_id, "status": "queued"}
 
 
 @app.get("/voice/jobs/{job_id}")
+@trace_call
 def voice_job_status(job_id: str, db: Session = Depends(get_db)):
     job = get_voice_job_public_dict(db, job_id)
     if not job:

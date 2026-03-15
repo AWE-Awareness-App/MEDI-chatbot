@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -9,7 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# chatterbox deps (pkuseg) require numpy import during setup.py metadata phase
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+ && pip install --no-cache-dir numpy==1.25.2 \
+ && pip install --no-cache-dir -r requirements.txt
 
 # Copy only application code - secrets/PDFs come in via env vars + volumes at runtime
 COPY app/ ./app/
